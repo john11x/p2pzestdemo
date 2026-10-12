@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, dateFnsLocalizer, type NavigateAction, type View } from 'react-big-calendar';
+import { Calendar, dateFnsLocalizer, type View } from 'react-big-calendar';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import CalendarToolbar from '@/components/calendar/CalendarToolbar';
 import Spinner from '@/components/shared/Spinner';
@@ -477,7 +477,7 @@ export default function StaffCalendarView({
             titleAccessor="title"
             date={date}
             view={view}
-            onNavigate={(newDate: Date, _view: View, _action: NavigateAction) => setDate(new Date(newDate))}
+            onNavigate={(newDate: Date) => setDate(new Date(newDate))}
             onView={setView}
             onRangeChange={(newRange) => {
               if (Array.isArray(newRange)) return;

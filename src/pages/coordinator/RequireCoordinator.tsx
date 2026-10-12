@@ -1,5 +1,4 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
-import { useEffect, useState } from 'react';
 import { isCoordinatorSession, readStoredSession } from '@/lib/auth';
 import { useCoordinatorAuth } from '@/hooks/useCoordinatorAuth';
 import Spinner from '@/components/shared/Spinner';
@@ -7,16 +6,9 @@ import Spinner from '@/components/shared/Spinner';
 export default function RequireCoordinator() {
   const { loading, isCoordinator, logout } = useCoordinatorAuth();
   const location = useLocation();
-  const [authChecked, setAuthChecked] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  const session = readStoredSession();
 
-  useEffect(() => {
-    const session = readStoredSession();
-    setSignedIn(Boolean(session));
-    setAuthChecked(true);
-  }, [location.pathname]);
-
-  if (!authChecked || loading) {
+  if (loading) {
     return (
       <div className="min-h-[50vh] flex items-center justify-center">
         <Spinner />
@@ -24,11 +16,11 @@ export default function RequireCoordinator() {
     );
   }
 
-  if (!signedIn) {
+  if (!session) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (!isCoordinator && !isCoordinatorSession(readStoredSession())) {
+  if (!isCoordinator && !isCoordinatorSession(session)) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50">
         <div className="card max-w-md p-8 text-center">
