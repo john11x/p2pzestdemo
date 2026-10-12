@@ -33,8 +33,19 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install frontend dependencies when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          fingerprint="$(sha256sum package.json pnpm-lock.yaml | sha256sum | awk '{print $1}')"
+          marker="node_modules/.ci-dependency-fingerprint"
+          if [[ -x node_modules/.bin/eslint && -f "$marker" && "$(cat "$marker")" == "$fingerprint" ]]; then
+            echo "Frontend dependencies already match the lockfile; skipping install."
+          else
+            pnpm install --frozen-lockfile --prefer-offline
+            mkdir -p node_modules
+            printf '%s\n' "$fingerprint" > "$marker"
+          fi
 
       - name: Lint frontend
         run: pnpm lint
