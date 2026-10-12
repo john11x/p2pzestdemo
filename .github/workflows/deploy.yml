@@ -11,26 +11,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci-and-deploy:
-    runs-on: [self-hosted, linux, x64]
+  build:
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Check preinstalled build tools
-        run: |
-          set -euo pipefail
-          command -v node
-          command -v pnpm
-          command -v java
-          command -v mvn
-          node --version
-          pnpm --version
-          java -version
-          mvn --version
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.16.1
 
-      - name: Install frontend dependencies from EC2 cache
-        run: pnpm install --offline --frozen-lockfile
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Lint frontend
         run: pnpm lint
@@ -45,12 +51,42 @@ jobs:
           set -euo pipefail
           mkdir -p springbackend/target/classes/static
           cp -a dist/. springbackend/target/classes/static/
-          mvn -o -f springbackend/pom.xml package
+          mvn --batch-mode --no-transfer-progress -f springbackend/pom.xml package
 
-      - name: Check deployment configuration
-        if: github.ref == 'refs/heads/main'
+      - name: Upload application JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: zestp2p-app
+          path: springbackend/target/springbackend-0.0.1-SNAPSHOT.jar
+          if-no-files-found: error
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download application JAR
+        uses: actions/download-artifact@v4
+        with:
+          name: zestp2p-app
+          path: springbackend/target
+
+      - name: Check deployment prerequisites
         run: |
           set -euo pipefail
+          if ! command -v java >/dev/null 2>&1; then
+            if ! command -v apt-get >/dev/null 2>&1; then
+              echo "Java 17 is missing. Install a Java 17 runtime on this EC2 host." >&2
+              exit 1
+            fi
+            sudo apt-get update
+            sudo apt-get install -y openjdk-17-jre-headless
+          fi
+          command -v java
+          java -version
           sudo test -s /etc/zestp2p/zestp2p.env || {
             echo "Create /etc/zestp2p/zestp2p.env on EC2 before deploying." >&2
             exit 1
@@ -58,7 +94,6 @@ jobs:
           test -s springbackend/target/springbackend-0.0.1-SNAPSHOT.jar
 
       - name: Deploy and restart Spring Boot
-        if: github.ref == 'refs/heads/main'
         run: |
           set -euo pipefail
           sudo install -d -o ubuntu -g ubuntu /opt/zestp2p
