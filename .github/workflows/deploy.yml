@@ -134,6 +134,13 @@ jobs:
             sudo systemctl disable --now zestp2p.service
           fi
           docker compose -f compose.yaml up -d --force-recreate --remove-orphans
-          curl --fail --silent --show-error --retry 10 --retry-delay 3 \
-            --retry-connrefused http://127.0.0.1:8080/api/health
-          curl --fail --silent --show-error http://127.0.0.1:8080/ >/dev/null
+          if ! curl --fail --silent --show-error --retry 30 --retry-delay 2 \
+            --retry-all-errors --max-time 10 http://127.0.0.1:8080/api/health; then
+            docker compose -f compose.yaml logs --no-color --tail=100
+            exit 1
+          fi
+          if ! curl --fail --silent --show-error --retry 10 --retry-delay 2 \
+            --retry-all-errors --max-time 10 http://127.0.0.1:8080/ >/dev/null; then
+            docker compose -f compose.yaml logs --no-color --tail=100
+            exit 1
+          fi
