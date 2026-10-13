@@ -11,6 +11,8 @@ node_modules
 dist
 dist-ssr
 *.local
+/docker/frontend/site/
+/docker/backend/app.jar
 
 # Editor directories and files
 .vscode/*

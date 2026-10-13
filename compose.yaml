@@ -1,0 +1,26 @@
+name: zestp2p
+
+services:
+  frontend:
+    image: ghcr.io/john11x/p2pzestdemo-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - app
+
+  backend:
+    image: ghcr.io/john11x/p2pzestdemo-backend:${IMAGE_TAG:-latest}
+    env_file:
+      - ${APP_ENV_FILE:-/etc/zestp2p/zestp2p.env}
+    expose:
+      - "8080"
+    restart: unless-stopped
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge

@@ -12,6 +12,9 @@ concurrency:
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -55,64 +58,87 @@ jobs:
           VITE_API_BASE_URL: /api
         run: pnpm build
 
-      - name: Test and package backend with frontend
+      - name: Test and package backend
         run: |
           set -euo pipefail
-          mkdir -p springbackend/target/classes/static
-          cp -a dist/. springbackend/target/classes/static/
           mvn --batch-mode --no-transfer-progress -f springbackend/pom.xml package
 
-      - name: Upload application JAR
-        uses: actions/upload-artifact@v4
+      - name: Validate Docker Compose configuration
+        env:
+          APP_ENV_FILE: /dev/null
+          IMAGE_TAG: validation
+        run: docker compose -f compose.yaml config --quiet
+
+      - name: Prepare Docker build contexts
+        run: |
+          set -euo pipefail
+          mkdir -p docker/frontend/site docker/backend
+          cp -a dist/. docker/frontend/site/
+          cp springbackend/target/springbackend-0.0.1-SNAPSHOT.jar docker/backend/app.jar
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          name: zestp2p-app
-          path: springbackend/target/springbackend-0.0.1-SNAPSHOT.jar
-          if-no-files-found: error
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/frontend
+          push: true
+          tags: ghcr.io/john11x/p2pzestdemo-frontend:${{ github.sha }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: docker/backend
+          push: true
+          tags: ghcr.io/john11x/p2pzestdemo-backend:${{ github.sha }}
 
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: read
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Download application JAR
-        uses: actions/download-artifact@v4
-        with:
-          name: zestp2p-app
-          path: springbackend/target
-
       - name: Check deployment prerequisites
         run: |
           set -euo pipefail
-          if ! command -v java >/dev/null 2>&1; then
-            if ! command -v apt-get >/dev/null 2>&1; then
-              echo "Java 17 is missing. Install a Java 17 runtime on this EC2 host." >&2
-              exit 1
-            fi
-            sudo apt-get update
-            sudo apt-get install -y openjdk-17-jre-headless
-          fi
-          command -v java
-          java -version
+          command -v docker
+          docker compose version
+          docker info >/dev/null
           sudo test -s /etc/zestp2p/zestp2p.env || {
             echo "Create /etc/zestp2p/zestp2p.env on EC2 before deploying." >&2
             exit 1
           }
-          test -s springbackend/target/springbackend-0.0.1-SNAPSHOT.jar
 
-      - name: Deploy and restart Spring Boot
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull and recreate both services
         run: |
           set -euo pipefail
-          sudo install -d -o ubuntu -g ubuntu /opt/zestp2p
-          sudo install -o ubuntu -g ubuntu -m 0644 \
-            springbackend/target/springbackend-0.0.1-SNAPSHOT.jar \
-            /opt/zestp2p/app.jar
-          sudo install -m 0644 deploy/zestp2p.service \
-            /etc/systemd/system/zestp2p.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable zestp2p
-          sudo systemctl restart zestp2p
+          export IMAGE_TAG="$GITHUB_SHA"
+          export APP_ENV_FILE=/etc/zestp2p/zestp2p.env
+          docker compose -f compose.yaml pull
+          if sudo systemctl is-active --quiet zestp2p.service; then
+            sudo systemctl disable --now zestp2p.service
+          fi
+          docker compose -f compose.yaml up -d --force-recreate --remove-orphans
           curl --fail --silent --show-error --retry 10 --retry-delay 3 \
             --retry-connrefused http://127.0.0.1:8080/api/health
+          curl --fail --silent --show-error http://127.0.0.1:8080/ >/dev/null
