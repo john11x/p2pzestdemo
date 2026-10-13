@@ -117,10 +117,6 @@ jobs:
           command -v docker
           docker compose version
           docker info >/dev/null
-          sudo test -s /etc/zestp2p/zestp2p.env || {
-            echo "Create /etc/zestp2p/zestp2p.env on EC2 before deploying." >&2
-            exit 1
-          }
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -133,7 +129,6 @@ jobs:
         run: |
           set -euo pipefail
           export IMAGE_TAG="$GITHUB_SHA"
-          export APP_ENV_FILE=/etc/zestp2p/zestp2p.env
           docker compose -f compose.yaml pull
           if sudo systemctl is-active --quiet zestp2p.service; then
             sudo systemctl disable --now zestp2p.service

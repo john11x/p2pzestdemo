@@ -15,8 +15,7 @@ The [CI and EC2 deploy workflow](.github/workflows/deploy.yml) lints and builds 
 One-time EC2 requirements:
 
 - Install Docker Engine with the Compose plugin, and allow the `ubuntu` runner account to use Docker.
-- Keep `/etc/zestp2p/zestp2p.env` on the instance; Compose passes it to the backend container. Do not commit credentials.
 - Allow inbound TCP `8080` in the instance security group if the app should be reachable externally. Use `http://<EC2-public-IP>:8080/`; TLS is not configured here.
-- For persistent production data, configure PostgreSQL (for example, RDS) in the environment file. The current default H2 database is in-memory.
+- The backend currently uses its default in-memory H2 database. Configure PostgreSQL (for example, RDS) before using persistent production data; provide its credentials securely to the backend container at that point.
 
 The legacy `zestp2p.service` systemd service is stopped and disabled by the first Compose deployment to free port `8080`.
